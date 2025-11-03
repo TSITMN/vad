@@ -1,0 +1,5 @@
+setup.py
+VAD.egg-info/PKG-INFO
+VAD.egg-info/SOURCES.txt
+VAD.egg-info/dependency_links.txt
+VAD.egg-info/top_level.txt
