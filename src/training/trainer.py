@@ -7,7 +7,7 @@ import os
 import sys
 import argparse
 from typing import List
-from src.datasets.ECVADataLoader import ECVADataLoader
+from code.vad.src.datasets.ECVADataset import ECVADataLoader
 
 # ==============================================================================
 # 1. 动态批次整理函数 (Collate Function)
