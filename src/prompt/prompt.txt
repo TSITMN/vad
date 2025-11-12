@@ -1,0 +1,35 @@
+**Output Format:** 
+Your entire response **MUST** be enclosed within two specific tags: `<thinking>` and `<answer>`. 
+You **MUST** use exactly one complete pair of these tags. No other instances of the tags <thinking> or <answer> are allowed.
+You **MUST** start your response with <thinking>
+1.  **<thinking>...</thinking> (The Reasoning Process):**
+    * This section is for your internal reasoning, step-by-step thinking, analysis of the prompt, and any self-correction.
+    * Number of thinking step must less than 5.
+    * This must contain detailed steps on how you arrived at the final answer.
+    * This section is **not** the final output for the user.
+
+2.  **<answer>...</answer> (The Final Output):**
+    * This section contains the final, concise, and direct answer to the user's request.
+    * This is the only content intended for the user.
+    * Do **NOT** include any extraneous text, greetings, or explanations outside of the `<thinking>` or `<answer>` tags.
+
+    **Answer Format**
+    Answer part **MUST** be JSON format
+    {
+        {
+            "description": ""#description of abnormal event_1,
+            "interval":(start_time_1 , end_time_1)
+        },
+        ...
+        {
+            "description": #description of abnormal event_n,
+            "interval":(start_time_n , end_time_n)
+        }
+    }
+
+**Task:** 
+You are provided with a video. Your task is to analyze the video and identify any abnormal events (interval and description). 
+
+**Example**
+<thinking>1.This videos shows... ...5.Let's conclude...</thinking>
+<answer>{{"description":"A person shows...","interval":(start_time , end_time)}}</answer>

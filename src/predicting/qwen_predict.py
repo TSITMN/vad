@@ -1,7 +1,6 @@
 from transformers import AutoModelForImageTextToText, AutoProcessor ,StoppingCriteria, StoppingCriteriaList
 from qwen_vl_utils import process_vision_info
 from src.utils.KeywordsStoppingCriteria import KeywordsStoppingCriteria
-from src.datasets.dataloader_factory import get_dataloader
 
 model_path = (
     "/data/models/Qwen/Qwen3-VL-8B-Thinking"
@@ -61,9 +60,9 @@ messages = [
         "content": [
             {
                 "type": "video",
-                "video": "/data/datasets/ECVA/videos/6.mp4",
+                "video": "/data/datasets/ECVA/videos/338.mp4",
                 "min_pixels": 4 * 32 * 32,
-                "max_pixels": 256 * 32 * 32,
+                "max_pixels": 128 * 32 * 32,
                 "total_pixels": 20480 * 32 * 32,
             },
             {
@@ -80,6 +79,8 @@ text = processor.apply_chat_template(
 images, videos, video_kwargs = process_vision_info(
     messages, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True
 )
+if videos:
+    print(f"Video split into {len(videos)} segments.")
 
 # split the videos and according metadatas
 if videos is not None:
