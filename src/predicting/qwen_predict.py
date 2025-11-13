@@ -3,7 +3,7 @@ from qwen_vl_utils import process_vision_info
 from src.utils.KeywordsStoppingCriteria import KeywordsStoppingCriteria
 
 model_path = (
-    "/data/models/Qwen/Qwen3-VL-8B-Thinking"
+    "/data/models/Qwen/Qwen3-VL-4B-Thinking"
 )
 
 model = AutoModelForImageTextToText.from_pretrained(
@@ -98,8 +98,9 @@ inputs = processor(
     video_metadata=video_metadatas,
     return_tensors="pt",
     do_resize=False,
-    **video_kwargs
+    **video_kwargs 
 )
+
 inputs = inputs.to(model.device)
 
 

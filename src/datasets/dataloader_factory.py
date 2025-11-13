@@ -4,33 +4,30 @@ from transformers import AutoProcessor
 from qwen_vl_utils import process_vision_info
 import logging
 import io
-# from unittest.mock import patch # 不再需要
 
-# 从我们之前修改的文件中导入 ECVADataset 类
-# 假设该文件名为 ECVADataLoader.py
 from src.datasets.ECVADataset import ECVADataset
 
 logger = logging.getLogger(__name__)
 
-def custom_collate_fn(batch_list, processor):
-    # 1. 收集批次中所有样本的 messages 和 text
-    all_messages = [item["messages"] for item in batch_list]
-    all_chats = [item["text"] for item in batch_list]
-    # 提取视频路径
-    video_paths=[item["messages"][0]["content"][0]["video"] for item in batch_list]
-    # 2. 一次性为整个批次预处理视觉信息
-    # process_vision_info 可以直接处理 messages 列表
+def _process_and_collate_sub_batch(sub_batch, processor):
+    """处理单个子批次的辅助函数"""
+    if not sub_batch:
+        return None
+    
+    all_messages = [item["messages"] for item in sub_batch]
+    all_chats = [item["text"] for item in sub_batch]
+    video_paths = [item["messages"][0]["content"][0]["video"] for item in sub_batch]
+    
     images, videos, video_kwargs = process_vision_info(
         all_messages, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True
     )
-    # split the videos and according metadatas
+    
     if videos is not None:
         videos, video_metadatas = zip(*videos)
         videos, video_metadatas = list(videos), list(video_metadatas)
     else:
         video_metadatas = None
-    # 3. 将所有样本合并为一个批次
-    # 将 process_vision_info 的输出直接传递给 processor
+    
     model_inputs = processor(
         text=all_chats,
         images=images,
@@ -41,19 +38,76 @@ def custom_collate_fn(batch_list, processor):
         truncation=True,
         **video_kwargs,
     )
-
-    # ✅ 优化点 2: 删除不再需要的中间变量
-    del all_messages, all_chats, images, videos, video_metadatas, video_kwargs
-
-    # 4. 创建标签
-    labels = model_inputs["input_ids"].clone()
-    # print(processor.tokenizer.decode(model_inputs["input_ids"][0] , skip_special_tokens=True))
     
-    # 如果批次中仍有有效样本，则返回它们
+    del all_messages, all_chats, images, videos, video_metadatas, video_kwargs
+    
+    labels = model_inputs["input_ids"].clone()
+    
     if model_inputs["input_ids"].shape[0] > 0:
         return {"video_paths": video_paths, **model_inputs, "labels": labels}
     else:
-        return {}
+        return None
+
+
+def custom_collate_fn(batch_list, processor, max_total_size_gb=2.0):
+    """
+    根据视频文件总大小动态拆分批次的 collate 函数。
+    
+    Args:
+        batch_list: 原始批次数据列表
+        processor: 处理器
+        max_total_size_gb: 单个批次允许的最大总文件大小(GB)
+    
+    Returns:
+        list: 拆分后的子批次列表
+    """
+    max_total_size_bytes = max_total_size_gb * (1024 ** 3)
+    sub_batches = []
+    current_sub_batch = []
+    current_total_size = 0
+    
+    for item in batch_list:
+        video_size = item.get("video_size", 0)
+        
+        # 如果添加当前视频会超过限制,且当前子批次不为空,则开始新的子批次
+        if current_sub_batch and current_total_size + video_size > max_total_size_bytes:
+            # 处理当前子批次
+            processed_batch = _process_and_collate_sub_batch(current_sub_batch, processor)
+            if processed_batch:
+                sub_batches.append(processed_batch)
+                logger.info(f"Created sub-batch with {len(current_sub_batch)} videos, total size: {current_total_size / (1024**3):.2f} GB")
+            
+            # 开始新的子批次
+            current_sub_batch = [item]
+            current_total_size = video_size
+        else:
+            # 添加到当前子批次
+            current_sub_batch.append(item)
+            current_total_size += video_size
+    
+    # 处理最后一个子批次
+    if current_sub_batch:
+        processed_batch = _process_and_collate_sub_batch(current_sub_batch, processor)
+        if processed_batch:
+            sub_batches.append(processed_batch)
+            logger.info(f"Created sub-batch with {len(current_sub_batch)} videos, total size: {current_total_size / (1024**3):.2f} GB")
+    
+    return sub_batches
+
+
+class VariableBatchDataLoader(DataLoader):
+    """
+    支持动态批次拆分的 DataLoader。
+    当 collate_fn 返回列表时,逐个产出子批次。
+    """
+    def __iter__(self):
+        for batch_list in super().__iter__():
+            if isinstance(batch_list, list) and batch_list:
+                # 如果返回的是批次列表,逐个产出
+                yield from batch_list
+            elif batch_list:
+                # 如果返回的是单个批次,直接产出
+                yield batch_list
 
 
 def create_ecva_dataloader(
@@ -67,6 +121,7 @@ def create_ecva_dataloader(
     sample_size=None,
     is_train=True,
     start_index=0,
+    max_total_size_gb=2.0,  # 新增参数:单个批次最大总文件大小(GB)
 ):
     """
     创建一个用于 ECVA 数据集的 DataLoader。
@@ -74,15 +129,16 @@ def create_ecva_dataloader(
     Args:
         annotations_file (str): 包含标注数据的 XLSX 文件路径。
         video_root_path (str): 存放视频文件的根目录。
-        processor: Hugging Face 的 AutoProcessor 实例，将用作 collator。
+        processor: Hugging Face 的 AutoProcessor 实例,将用作 collator。
         batch_size (int): 每个批次的大小。
         num_workers (int): 用于数据加载的子进程数。
         shuffle (bool): 是否在每个 epoch 开始时打乱数据。
-        sample_size (int, optional): 如果提供，则只加载指定数量的样本。默认为 None。
-        start_index (int): 数据集的起始索引，用于断点续传。
+        sample_size (int, optional): 如果提供,则只加载指定数量的样本。默认为 None。
+        start_index (int): 数据集的起始索引,用于断点续传。
+        max_total_size_gb (float): 单个批次允许的最大视频文件总大小(GB)。
 
     Returns:
-        torch.utils.data.DataLoader: 配置好的 DataLoader 实例。
+        VariableBatchDataLoader: 配置好的 DataLoader 实例。
     """
     # 1. 实例化我们之前创建的 Dataset
     full_dataset = ECVADataset(
@@ -106,19 +162,16 @@ def create_ecva_dataloader(
 
     # 然后在切片后的数据集上应用 sample_size
     if sample_size is not None:
-        # 如果指定了 sample_size，则创建一个只包含前 N 个样本的子集
         dataset = Subset(dataset, range(min(sample_size, len(dataset))))
         print(f"Using a subset of {len(dataset)} samples for testing.")
 
-    # 2. 创建 DataLoader
-    #    - collate_fn=processor: 这是关键。processor 知道如何将批次中的
-    #      多个样本（文本和视频）正确地填充和堆叠成一个批次张量。
-    dataloader = DataLoader(
+    # 2. 创建支持动态批次的 DataLoader
+    dataloader = VariableBatchDataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        collate_fn=lambda batch: custom_collate_fn(batch, processor),
+        collate_fn=lambda batch: custom_collate_fn(batch, processor, max_total_size_gb=max_total_size_gb),
         pin_memory=True,
     )
     
@@ -144,6 +197,7 @@ if __name__ == '__main__':
         shuffle=False,  # 关闭打乱以便于复现
         prompt_type="single_round",
         sample_size=5, # 添加采样测试
+        max_total_size_gb=1.5,  # 测试文件大小限制
     )
 
     # 3. 从 DataLoader 中获取一个批次的数据

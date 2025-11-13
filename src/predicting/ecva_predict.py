@@ -168,14 +168,14 @@ def predict(
 
 if __name__ == "__main__":
     # --- 配置参数 ---
-    MODEL_PATH = "/data/models/Qwen/Qwen3-VL-8B-Thinking"
+    MODEL_PATH = "/data/models/Qwen/Qwen3-VL-4B-Thinking"
     ANNOTATIONS_FILE = "/data/datasets/ECVA/Video_Annotation.xlsx"
     VIDEO_ROOT_PATH = "/data/datasets/ECVA/videos"
     OUTPUT_FILE = "output/predict/ecva_predict.json"
     BATCH_SIZE = 1
     PROMPT_TYPE = "single_round"
     SAMPLE_SIZE = 16 
-    START_INDEX = 300
+    START_INDEX = 326
     #294 error video
     #297 298 299
     predict(

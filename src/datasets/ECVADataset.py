@@ -63,6 +63,14 @@ class ECVADataset(Dataset):
         # 1. 获取视频路径 (使用索引 0)
         video_id = str(item.iloc[0]) # 索引 0 对应 'video_id'
         video_path = os.path.join(self.video_root_path, f"{video_id}.mp4")
+        
+        # 获取视频文件大小(字节)
+        try:
+            video_size = os.path.getsize(video_path)
+        except OSError:
+            video_size = 0
+            print(f"Warning: Could not get size of video file {video_path}")
+        
         # print(video_path)
         # 2. 处理 'A4 - key sentences' 列 (使用索引 6)
         key_sentences_str = item.iloc[6] # 索引 6 对应 'A4 - key sentences'
@@ -74,7 +82,7 @@ class ECVADataset(Dataset):
         except (ValueError, SyntaxError):
             # 如果解析失败，视为空列表
             key_sentences_list = []
-            print(f"Warning: Failed to parse key sentences for video_id {video_id}")
+            # print(f"Warning: Failed to parse key sentences for video_id {video_id}")
         # 3. 处理A3,moment列，提取时间戳信息（使用索引4）
         moment_str = item.iloc[4]  # 索引4对应 'A3,moment'
         moment_str_safe = re.sub(r'(\d+)', r'"\1"', str(moment_str))
@@ -105,8 +113,8 @@ class ECVADataset(Dataset):
                             "type": "video", 
                             "video": video_path, 
                             "min_pixels": 4 * 32 * 32,
-                            "max_pixels": 32 * 32 * 32,
-                            "total_pixels": 24576 * 32 * 32,
+                            "max_pixels": 96 * 32 * 32,
+                            "total_pixels": 20480 * 32 * 32,
                         },
                         {
                             "type": "text",  
@@ -127,7 +135,8 @@ class ECVADataset(Dataset):
                     "text": self.processor.apply_chat_template(messages , 
                                                                tokenize=False ,
                                                                add_generation_prompt=add_gen_prompt),
-                    "moment_list": moment_list
+                    "moment_list": moment_list,
+                    "video_size": video_size,  # 添加视频大小
                     }
         
         if self.prompt_type == "qa_pair":   
@@ -173,6 +182,7 @@ class ECVADataset(Dataset):
             return {
                     "messages": messages,
                     "text": self.processor.apply_chat_template(messages , tokenize=False ,add_generation_prompt=add_gen_prompt),
+                    "video_size": video_size,  # 添加视频大小
                     }
     
 if __name__ == "__main__":
