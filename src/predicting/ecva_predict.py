@@ -3,11 +3,7 @@ import json
 import torch
 from transformers import AutoModelForImageTextToText, AutoProcessor, StoppingCriteria, StoppingCriteriaList
 from tqdm import tqdm
-import sys
 
-# 将项目根目录添加到 Python 路径中，以便导入自定义模块
-# 这假设脚本是从 /root/code/vad 目录运行的
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from src.datasets.dataloader_factory import create_ecva_dataloader
 from src.utils.KeywordsStoppingCriteria import KeywordsStoppingCriteria
 
